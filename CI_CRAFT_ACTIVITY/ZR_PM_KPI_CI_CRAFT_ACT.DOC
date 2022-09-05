@@ -1,0 +1,368 @@
+*&---------------------------------------------------------------------*
+*Program Name / Enhancement Name : ZR_PM_KPIREPORT_TEST
+*TCode
+*Description
+*CR Number
+*Package
+*Date of V=Creation
+*TR
+*Func Consultant
+*Tech Consultant
+*&---------------------------------------------------------------------*
+REPORT ZR_PM_KPI_CI_CRAFT_ACT.
+INCLUDE ZINIT_CI.
+*INCLUDE ZINIT_MAIN_TEST.
+
+INITIALIZATION.
+  T1 = 'Plant'.
+  T2 = 'Period'.
+  T3 = 'Week'.
+  PERFORM USER_DROP_DOWN_LIST_FORDT.
+  PERFORM USER_DROP_DOWN_LIST_FORYR.
+  PERFORM USER_DROP_DOWN_LIST_FORWK.
+
+************************************************************************
+*Start-of-selection.
+START-OF-SELECTION.
+
+  PERFORM DATA_RETRIEVAL.
+  PERFORM BUILD_FIELDCATALOG.
+  PERFORM BUILD_LAYOUT.
+  PERFORM DISPLAY_ALV_REPORT.
+
+*&---------------------------------------------------------------------*
+*&      Form  DATA_RETRIEVAL
+*&---------------------------------------------------------------------*
+*       Retrieve data form EKPO table and populate itab it_ekko
+*----------------------------------------------------------------------*
+FORM DATA_RETRIEVAL.
+  PERFORM GET_WEEKS.
+
+  DATA: MONTH TYPE T247-LTX.
+  IF P_WEEK NE 0.
+    DELETE LT_WEEK WHERE WEEK NE P_WEEK.
+  ENDIF.
+  LT_FINAL-U = 1.
+  LT_FINAL-U1 = 1.
+  LT_FINAL-U2 = 1.
+  LOOP AT LT_WEEK.
+    WEEKNO = SY-TABIX.
+    SELECT * FROM AUFK INTO CORRESPONDING FIELDS OF TABLE LT_AUFK WHERE WERKS EQ P_PLANT AND AUTYP EQ '30' AND ERDAT BETWEEN LT_WEEK-LOW AND LT_WEEK-HIGH.
+    SELECT SINGLE LTX INTO MONTH FROM T247 WHERE SPRAS EQ 'EN' AND MNR EQ P_MONTH.
+    CONCATENATE 'Week' ' ' WEEKNO ' ' 'of' ' ' MONTH ' ' P_YEAR INTO LT_FINAL-WEEK RESPECTING BLANKS.
+    LOOP AT LT_AUFK.
+      SELECT SINGLE OBJNR STAT INACT FROM JEST INTO LT_JEST WHERE OBJNR EQ LT_AUFK-OBJNR.
+      IF LT_JEST-STAT EQ 'I0076' AND LT_JEST-INACT NE 'X'.
+        DELETE LT_AUFK WHERE OBJNR EQ LT_JEST-OBJNR.
+      ENDIF.
+    ENDLOOP.
+    SELECT AUFPL FROM AFKO INTO CORRESPONDING FIELDS OF TABLE LT_AFKO FOR ALL ENTRIES IN LT_AUFK WHERE AUFNR EQ LT_AUFK-AUFNR.
+    SELECT ISMNW FROM AFVV INTO CORRESPONDING FIELDS OF TABLE LT_AFVV FOR ALL ENTRIES IN LT_AFKO WHERE AUFPL EQ LT_AFKO-AUFPL.
+    LOOP AT LT_AFVV.
+      AT LAST.
+        SUM.
+        TOTAL_ISMNW = LT_AFVV-ISMNW.
+      ENDAT.
+    ENDLOOP.
+    LT_FINAL-A_CRAFT_TIME = TOTAL_ISMNW * 60.
+    TOTAL_ACT = TOTAL_ACT + LT_FINAL-A_CRAFT_TIME.
+    SELECT KAPID FROM CRHD INTO CORRESPONDING FIELDS OF TABLE LT_CRHD WHERE OBJTY EQ 'A' AND VERWE EQ '00PM'.
+    SELECT AZNOR FROM KAKO INTO CORRESPONDING FIELDS OF TABLE LT_KAKO FOR ALL ENTRIES IN LT_CRHD WHERE KAPID EQ LT_CRHD-KAPID.
+    LOOP AT LT_KAKO.
+      AT LAST.
+        SUM.
+        TOTAL_AZNOR = LT_KAKO-AZNOR.
+      ENDAT.
+    ENDLOOP.
+    LT_FINAL-T_CRAFT_TIME = TOTAL_AZNOR * ( LT_WEEK-WCOUNT * 8 * 60 ).
+    TOTAL_TCT = TOTAL_TCT + LT_FINAL-T_CRAFT_TIME.
+    LT_FINAL-CRAFT_CI_ACT =  LT_FINAL-A_CRAFT_TIME * 100 .
+    LT_FINAL-CRAFT_CI_ACT =  LT_FINAL-CRAFT_CI_ACT / LT_FINAL-T_CRAFT_TIME .
+    LT_FINAL-LINE_COLOR = 'C110'.
+    APPEND LT_FINAL TO LT_FINAL.
+  ENDLOOP.
+  LT_FINAL-WEEK = 'Total Craft CI Activity'.
+  LT_FINAL-A_CRAFT_TIME = TOTAL_ACT.
+  LT_FINAL-T_CRAFT_TIME = TOTAL_TCT.
+  LT_FINAL-CRAFT_CI_ACT =  LT_FINAL-A_CRAFT_TIME * '100.00' .
+  LT_FINAL-CRAFT_CI_ACT =  LT_FINAL-CRAFT_CI_ACT / LT_FINAL-T_CRAFT_TIME .
+  LT_FINAL-LINE_COLOR = 'C310'.
+  APPEND LT_FINAL TO LT_FINAL.
+ENDFORM.                    " DATA_RETRIEVAL
+
+*&---------------------------------------------------------------------*
+*&      Form  BUILD_FIELDCATALOG
+*&---------------------------------------------------------------------*
+*       Build Fieldcatalog for ALV Report
+*----------------------------------------------------------------------*
+FORM BUILD_FIELDCATALOG.
+
+  FIELDCATALOG-FIELDNAME   = 'WEEK'.
+  FIELDCATALOG-SELTEXT_L   = 'Week'.
+  FIELDCATALOG-COL_POS     = 0.
+  FIELDCATALOG-JUST        = 'C'.
+  APPEND FIELDCATALOG TO FIELDCATALOG.
+  CLEAR  FIELDCATALOG.
+
+  FIELDCATALOG-FIELDNAME   = 'A_CRAFT_TIME'.
+  FIELDCATALOG-SELTEXT_L   = 'Actual Craft Time'.
+  FIELDCATALOG-COL_POS     = 1.
+  FIELDCATALOG-JUST        = 'R'.
+  APPEND FIELDCATALOG TO FIELDCATALOG.
+  CLEAR  FIELDCATALOG.
+
+  FIELDCATALOG-FIELDNAME   = 'U'.
+  FIELDCATALOG-SELTEXT_L   = 'Unit'.
+  FIELDCATALOG-COL_POS     = 2.
+  FIELDCATALOG-JUST        = 'C'.
+  FIELDCATALOG-EDIT_MASK   = '_Min'.
+  APPEND FIELDCATALOG TO FIELDCATALOG.
+  CLEAR  FIELDCATALOG.
+
+  FIELDCATALOG-FIELDNAME   = 'T_CRAFT_TIME'.
+  FIELDCATALOG-SELTEXT_L   = 'Total Craft Time'.
+  FIELDCATALOG-COL_POS     = 3.
+  FIELDCATALOG-JUST        = 'R'.
+  APPEND FIELDCATALOG TO FIELDCATALOG.
+  CLEAR  FIELDCATALOG.
+
+  FIELDCATALOG-FIELDNAME   = 'U1'.
+  FIELDCATALOG-SELTEXT_L   = 'Unit'.
+  FIELDCATALOG-COL_POS     = 4.
+  FIELDCATALOG-JUST        = 'C'.
+  FIELDCATALOG-EDIT_MASK   = '_Min'.
+  APPEND FIELDCATALOG TO FIELDCATALOG.
+  CLEAR  FIELDCATALOG.
+
+  FIELDCATALOG-FIELDNAME   = 'CRAFT_CI_ACT'.
+  FIELDCATALOG-SELTEXT_L   = 'Craft CI Activity'.
+  FIELDCATALOG-COL_POS     = 5.
+  FIELDCATALOG-JUST        = 'R'.
+  APPEND FIELDCATALOG TO FIELDCATALOG.
+  CLEAR  FIELDCATALOG.
+
+  FIELDCATALOG-FIELDNAME   = 'U2'.
+  FIELDCATALOG-SELTEXT_L   = 'Unit'.
+  FIELDCATALOG-COL_POS     = 6.
+  FIELDCATALOG-JUST        = 'C'.
+  FIELDCATALOG-EDIT_MASK   = '_%'.
+  APPEND FIELDCATALOG TO FIELDCATALOG.
+  CLEAR  FIELDCATALOG.
+ENDFORM.                    " BUILD_FIELDCATALOG
+
+
+*&---------------------------------------------------------------------*
+*&      Form  BUILD_LAYOUT
+*&---------------------------------------------------------------------*
+*       Build layout for ALV grid report
+*----------------------------------------------------------------------*
+FORM BUILD_LAYOUT.
+  GD_LAYOUT-NO_INPUT          = 'X'.
+  GD_LAYOUT-COLWIDTH_OPTIMIZE = 'X'.
+  GD_LAYOUT-INFO_FIELDNAME =      'LINE_COLOR'.
+ENDFORM.                    " BUILD_LAYOUT
+
+
+
+FORM USER_DROP_DOWN_LIST_FORDT.
+  DATA: NAME  TYPE VRM_ID,
+        LIST  TYPE VRM_VALUES,
+        VALUE LIKE LINE OF LIST.
+  DATA: T_MONTHS TYPE T247 OCCURS 0 WITH HEADER LINE.
+  CLEAR LIST. REFRESH LIST.
+  NAME = 'P_MONTH'.
+  SELECT * INTO TABLE T_MONTHS
+  FROM T247 WHERE SPRAS EQ 'EN'.
+  SORT T_MONTHS ASCENDING BY MNR.
+  LOOP AT T_MONTHS.
+    CLEAR VALUE.
+    VALUE-KEY = T_MONTHS-MNR.
+    VALUE-TEXT = T_MONTHS-LTX.
+    APPEND VALUE TO LIST.
+    P_MONTH = '01'.
+  ENDLOOP.
+
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING
+      ID     = NAME
+      VALUES = LIST.
+ENDFORM.
+
+FORM USER_DROP_DOWN_LIST_FORYR.
+  DATA: NAME  TYPE VRM_ID,
+        LIST  TYPE VRM_VALUES,
+        VALUE LIKE LINE OF LIST.
+  CLEAR LIST. REFRESH LIST.
+  NAME = 'P_YEAR'.
+  DO 100 TIMES.
+    CLEAR VALUE.
+    VALUE-KEY = 2000 + SY-INDEX.
+    APPEND VALUE TO LIST.
+  ENDDO.
+
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING
+      ID     = NAME
+      VALUES = LIST.
+  P_YEAR = '2022'.
+ENDFORM.
+
+FORM USER_DROP_DOWN_LIST_FORWK.
+  DATA: NAME  TYPE VRM_ID,
+        LIST  TYPE VRM_VALUES,
+        VALUE LIKE LINE OF LIST.
+  CLEAR LIST. REFRESH LIST.
+  NAME = 'P_WEEK'.
+  DO 5 TIMES.
+    CLEAR VALUE.
+    VALUE-KEY = SY-INDEX.
+    CONCATENATE 'Week' SPACE VALUE-KEY INTO VALUE-TEXT RESPECTING BLANKS.
+    APPEND VALUE TO LIST.
+  ENDDO.
+  CLEAR VALUE.
+  VALUE-KEY = '0'.
+  VALUE-TEXT = 'ALL'.
+  APPEND VALUE TO LIST.
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING
+      ID     = NAME
+      VALUES = LIST.
+  P_WEEK = '0'.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  GET_WEEKS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM GET_WEEKS .
+  DATA: PAR_MONTH LIKE  T009B-BUMON,
+        PAR_YEAR  LIKE  T009B-BDATJ,
+        PAR_DAYS  LIKE  T009B-BUTAG,
+        SDATE     LIKE SY-DATUM,
+        LDATE     LIKE SY-DATUM,
+        TEMPD     TYPE SY-DATUM.
+
+  PAR_MONTH = P_MONTH.
+  PAR_YEAR = P_YEAR.
+  CALL FUNCTION 'NUMBER_OF_DAYS_PER_MONTH_GET'
+    EXPORTING
+      PAR_MONTH = PAR_MONTH
+      PAR_YEAR  = PAR_YEAR
+    IMPORTING
+      PAR_DAYS  = PAR_DAYS.
+  DD = PAR_DAYS.
+  CONCATENATE PAR_YEAR PAR_MONTH '01' INTO DATE1.
+  CALL FUNCTION 'DATE_GET_WEEK'
+    EXPORTING
+      DATE = DATE1
+    IMPORTING
+      WEEK = WEEK1.
+  CONCATENATE PAR_YEAR PAR_MONTH PAR_DAYS INTO DATE2.
+  CALL FUNCTION 'DATE_GET_WEEK'
+    EXPORTING
+      DATE = DATE2
+    IMPORTING
+      WEEK = WEEK2.
+
+  IF WEEK1+0(4) LT P_YEAR.
+    CONCATENATE P_YEAR '01' INTO WEEK1.
+  ENDIF.
+  SWEEK = WEEK1+4(2).
+  EWEEK = WEEK2+4(2).
+
+  LOOPS = EWEEK - SWEEK.
+  LOOPS = LOOPS + 1.
+  DO LOOPS TIMES.
+    CALL FUNCTION 'WEEK_GET_FIRST_DAY'
+      EXPORTING
+        WEEK = WEEK1
+      IMPORTING
+        DATE = SDATE.
+    TEMP_WEEK = WEEK1 + 1.
+    CALL FUNCTION 'WEEK_GET_FIRST_DAY'
+      EXPORTING
+        WEEK = TEMP_WEEK
+      IMPORTING
+        DATE = LDATE.
+    LDATE = LDATE - 1.
+    DATA: TDATE TYPE SY-DATUM,
+          DAY   TYPE DTRESR-WEEKDAY.
+    TEMPD = '0'.
+    IF SDATE LT DATE1.
+      SDATE = DATE1.
+      TDATE = SDATE.
+      WHILE TDATE <= LDATE.
+        CALL FUNCTION 'DATE_TO_DAY'
+          EXPORTING
+            DATE    = TDATE
+          IMPORTING
+            WEEKDAY = DAY.
+        IF DAY = 'Sunday'.
+          TEMPD = '1'.
+        ENDIF.
+        TDATE = TDATE + 1.
+      ENDWHILE.
+      CLEAR TDATE.
+    ELSEIF LDATE >= DATE2.
+      LDATE = DATE2.
+      TDATE = SDATE.
+      WHILE TDATE <= LDATE.
+        CALL FUNCTION 'DATE_TO_DAY'
+          EXPORTING
+            DATE    = TDATE
+          IMPORTING
+            WEEKDAY = DAY.
+        IF DAY = 'Sunday'.
+          TEMPD = '1'.
+        ENDIF.
+        TDATE = TDATE + 1.
+      ENDWHILE.
+      CLEAR TDATE.
+    ENDIF.
+
+    LT_WEEK-SIGN = 'I'.
+    LT_WEEK-OPTION = 'BT'.
+    LT_WEEK-LOW = SDATE.
+    LT_WEEK-HIGH = LDATE.
+    LT_WEEK-WEEK = SY-INDEX.
+    IF LDATE EQ SDATE.
+      LT_WEEK-WCOUNT = 1 - TEMPD.
+    ELSE.
+      LT_WEEK-WCOUNT = LDATE - SDATE - TEMPD.
+    ENDIF.
+    APPEND LT_WEEK TO LT_WEEK.
+    CLEAR TEMPD.
+    WEEK1 = WEEK1 + 1.
+  ENDDO.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_ALV_REPORT
+*&---------------------------------------------------------------------*
+*       Display report using ALV grid
+*----------------------------------------------------------------------*
+FORM DISPLAY_ALV_REPORT.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      I_CALLBACK_PROGRAM = SY-REPID
+*     I_CALLBACK_TOP_OF_PAGE  = 'TOP-OF-PAGE'  "see FORM
+*     I_CALLBACK_USER_COMMAND = 'USER_COMMAND'
+*     i_grid_title       = outtext
+      IS_LAYOUT          = GD_LAYOUT
+      IT_FIELDCAT        = FIELDCATALOG[]
+*     it_special_groups  = gd_tabgroup
+*     I_SAVE             = 'X'
+    TABLES
+      T_OUTTAB           = LT_FINAL
+    EXCEPTIONS
+      PROGRAM_ERROR      = 1
+      OTHERS             = 2.
+  IF SY-SUBRC <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+ENDFORM.                    " DISPLAY_ALV_REPORT
